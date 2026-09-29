@@ -218,7 +218,7 @@ export async function POST(req) {
         const weakItems = evalDetails.checklist
           .filter(i => i.score === 0)
           .map(
-            i => `${i.item} / ${i.reason}`
+            i => `▶ ${i.item} / ${i.reason}`
           )
           .join('\n');
 
