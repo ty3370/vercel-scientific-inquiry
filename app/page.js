@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { NOVICE_SCORE_THRESHOLD } from './config';
 
 export default function Home() {
   const [step, setStep] = useState(1);
@@ -588,7 +589,7 @@ export default function Home() {
     const numericTotalScore = Number(totalScore);
     const hasTotalScore = Number.isFinite(numericTotalScore);
     const isNovice =
-      hasTotalScore && numericTotalScore <= 10;
+      hasTotalScore && numericTotalScore <= NOVICE_SCORE_THRESHOLD;
 
     return (
       <div
