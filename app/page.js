@@ -63,6 +63,7 @@ export default function Home() {
     if (!userInfo.number.trim() || !userInfo.name.trim() || !userInfo.code.trim()) {
       return alert('학번, 이름, 식별 코드를 모두 입력해 주세요.');
     }
+
     setLoading(true);
     setLoadingText('학생 정보를 확인하고 있습니다...');
 
@@ -72,10 +73,12 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'login', ...userInfo })
       });
+
       const data = await res.json();
 
       if (data.exists && data.session) {
         const s = data.session;
+
         setInitialHypothesis(s.initial_hypothesis || '');
         setInitialProcedure(s.initial_procedure || '');
 
@@ -89,7 +92,12 @@ export default function Home() {
                   )
                 : null);
 
-        setTotalScore(Number.isFinite(restoredTotalScore) ? restoredTotalScore : null);
+        setTotalScore(
+          Number.isFinite(restoredTotalScore)
+            ? restoredTotalScore
+            : null
+        );
+
         setMessages(s.chat_messages || []);
         setRevisedHypothesis(s.revised_hypothesis || '');
         setRevisedProcedure(s.revised_procedure || '');
@@ -102,7 +110,10 @@ export default function Home() {
         const targetStep = s.current_step || 2;
         setStep(targetStep);
 
-        if (targetStep === 3 && (!s.chat_messages || s.chat_messages.length === 0)) {
+        if (
+          targetStep === 3 &&
+          (!s.chat_messages || s.chat_messages.length === 0)
+        ) {
           await loadInitialChat();
         }
       } else {
@@ -139,7 +150,13 @@ export default function Home() {
       const data = await res.json();
 
       const numericTotalScore = Number(data.totalScore);
-      setTotalScore(Number.isFinite(numericTotalScore) ? numericTotalScore : null);
+
+      setTotalScore(
+        Number.isFinite(numericTotalScore)
+          ? numericTotalScore
+          : null
+      );
+
       setStep(3);
 
       // 3페이지 첫 안내 대화 로드
@@ -156,14 +173,22 @@ export default function Home() {
     const res = await fetch('/api/inquiry', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get_initial_chat', ...userInfo })
+      body: JSON.stringify({
+        action: 'get_initial_chat',
+        ...userInfo
+      })
     });
 
     const data = await res.json();
 
     if (data.totalScore !== undefined) {
       const numericTotalScore = Number(data.totalScore);
-      setTotalScore(Number.isFinite(numericTotalScore) ? numericTotalScore : null);
+
+      setTotalScore(
+        Number.isFinite(numericTotalScore)
+          ? numericTotalScore
+          : null
+      );
     }
 
     if (data.messages) {
@@ -208,16 +233,22 @@ export default function Home() {
   // 3페이지 -> 4페이지: 대화 검증 및 요약 생성
   const handleProceedToStep4 = async () => {
     setLoading(true);
-    setLoadingText('탐구 대화 조건이 모두 충족되었는지 검증하고 있습니다...');
+    setLoadingText(
+      '탐구 대화 조건이 모두 충족되었는지 검증하고 있습니다...'
+    );
 
     try {
       const res = await fetch('/api/inquiry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'verify_and_summarize', ...userInfo })
+        body: JSON.stringify({
+          action: 'verify_and_summarize',
+          ...userInfo
+        })
       });
 
       const data = await res.json();
+
       setVerificationResult(data);
       setStep(4);
     } catch (err) {
@@ -230,11 +261,15 @@ export default function Home() {
   // 4페이지: 최종 2차 탐구 설계서 저장
   const handleSaveFinal = async () => {
     if (!revisedHypothesis.trim() || !revisedProcedure.trim()) {
-      return alert('수정된 2차 가설과 실험 절차를 모두 입력해 주세요.');
+      return alert(
+        '수정된 2차 가설과 실험 절차를 모두 입력해 주세요.'
+      );
     }
 
     setLoading(true);
-    setLoadingText('최종 탐구 설계서를 저장하고 있습니다...');
+    setLoadingText(
+      '최종 탐구 설계서를 저장하고 있습니다...'
+    );
 
     try {
       const res = await fetch('/api/inquiry', {
@@ -252,7 +287,10 @@ export default function Home() {
 
       if (data.success) {
         setIsCompleted(true);
-        alert('🎉 최종 2차 탐구 설계서가 성공적으로 저장되었습니다!');
+
+        alert(
+          '🎉 최종 2차 탐구 설계서가 성공적으로 저장되었습니다!'
+        );
       }
     } catch (err) {
       alert('저장 중 오류 발생: ' + err.message);
@@ -274,8 +312,21 @@ export default function Home() {
           color: '#f8fafc'
         }}
       >
-        <div style={{ fontSize: '40px', marginBottom: '16px' }}>⏳</div>
-        <p style={{ fontSize: '18px', fontWeight: '600' }}>
+        <div
+          style={{
+            fontSize: '40px',
+            marginBottom: '16px'
+          }}
+        >
+          ⏳
+        </div>
+
+        <p
+          style={{
+            fontSize: '18px',
+            fontWeight: '600'
+          }}
+        >
           {loadingText || '처리 중입니다...'}
         </p>
       </div>
@@ -303,8 +354,14 @@ export default function Home() {
             border: '1px solid #334155'
           }}
         >
-          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+          <div
+            style={{
+              textAlign: 'center',
+              marginBottom: '28px'
+            }}
+          >
             <span style={{ fontSize: '48px' }}>🔬</span>
+
             <h1
               style={{
                 color: '#f8fafc',
@@ -315,12 +372,25 @@ export default function Home() {
             >
               AI-탐구 설계 도우미
             </h1>
-            <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>
+
+            <p
+              style={{
+                color: '#94a3b8',
+                fontSize: '14px',
+                margin: 0
+              }}
+            >
               학번, 이름, 코드를 입력해 시작하거나 이어하세요.
             </p>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px'
+            }}
+          >
             <input
               style={{
                 padding: '14px',
@@ -333,7 +403,10 @@ export default function Home() {
               placeholder="학번 (예: 10101)"
               value={userInfo.number}
               onChange={e =>
-                setUserInfo({ ...userInfo, number: e.target.value })
+                setUserInfo({
+                  ...userInfo,
+                  number: e.target.value
+                })
               }
             />
 
@@ -349,7 +422,10 @@ export default function Home() {
               placeholder="이름 (예: 홍길동)"
               value={userInfo.name}
               onChange={e =>
-                setUserInfo({ ...userInfo, name: e.target.value })
+                setUserInfo({
+                  ...userInfo,
+                  name: e.target.value
+                })
               }
             />
 
@@ -366,7 +442,10 @@ export default function Home() {
               title="타인의 학번과 이름으로 접속하는 것을 방지하기 위해 자신만 기억할 수 있는 코드를 입력하세요."
               value={userInfo.code}
               onChange={e =>
-                setUserInfo({ ...userInfo, code: e.target.value })
+                setUserInfo({
+                  ...userInfo,
+                  code: e.target.value
+                })
               }
             />
 
@@ -450,7 +529,9 @@ export default function Home() {
             marginBottom: '20px'
           }}
           value={initialHypothesis}
-          onChange={e => setInitialHypothesis(e.target.value)}
+          onChange={e =>
+            setInitialHypothesis(e.target.value)
+          }
         />
 
         <label
@@ -477,7 +558,9 @@ export default function Home() {
             marginBottom: '24px'
           }}
           value={initialProcedure}
-          onChange={e => setInitialProcedure(e.target.value)}
+          onChange={e =>
+            setInitialProcedure(e.target.value)
+          }
         />
 
         <button
@@ -504,7 +587,8 @@ export default function Home() {
   if (step === 3) {
     const numericTotalScore = Number(totalScore);
     const hasTotalScore = Number.isFinite(numericTotalScore);
-    const isNovice = hasTotalScore && numericTotalScore <= 10;
+    const isNovice =
+      hasTotalScore && numericTotalScore <= 10;
 
     return (
       <div
@@ -551,7 +635,9 @@ export default function Home() {
               유형:{' '}
               <b
                 style={{
-                  color: isNovice ? '#f87171' : '#4ade80'
+                  color: isNovice
+                    ? '#f87171'
+                    : '#4ade80'
                 }}
               >
                 {hasTotalScore
@@ -560,7 +646,11 @@ export default function Home() {
                     : '정교화·확장'
                   : '채점 확인 중'}
               </b>{' '}
-              (총점: {hasTotalScore ? numericTotalScore : '-'}/15점)
+              (총점:{' '}
+              {hasTotalScore
+                ? numericTotalScore
+                : '-'}
+              /15점)
             </span>
           </div>
 
@@ -595,7 +685,9 @@ export default function Home() {
               style={{
                 display: 'flex',
                 justifyContent:
-                  m.role === 'user' ? 'flex-end' : 'flex-start'
+                  m.role === 'user'
+                    ? 'flex-end'
+                    : 'flex-start'
               }}
             >
               <div
@@ -607,12 +699,18 @@ export default function Home() {
                   lineHeight: '1.6',
                   whiteSpace: 'pre-wrap',
                   backgroundColor:
-                    m.role === 'user' ? '#2563eb' : '#334155',
+                    m.role === 'user'
+                      ? '#2563eb'
+                      : '#334155',
                   color: '#ffffff',
                   borderBottomRightRadius:
-                    m.role === 'user' ? '4px' : '16px',
+                    m.role === 'user'
+                      ? '4px'
+                      : '16px',
                   borderBottomLeftRadius:
-                    m.role === 'assistant' ? '4px' : '16px'
+                    m.role === 'assistant'
+                      ? '4px'
+                      : '16px'
                 }}
               >
                 <div
@@ -723,9 +821,14 @@ export default function Home() {
               placeholder="질문이나 답변을 입력하세요..."
               value={userPrompt}
               disabled={chatLoading}
-              onChange={e => setUserPrompt(e.target.value)}
+              onChange={e =>
+                setUserPrompt(e.target.value)
+              }
               onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (
+                  e.key === 'Enter' &&
+                  !e.shiftKey
+                ) {
                   e.preventDefault();
                   handleSendMessage();
                 }
@@ -745,7 +848,9 @@ export default function Home() {
               onClick={handleSendMessage}
               disabled={chatLoading}
             >
-              {chatLoading ? '답변 중' : '전송'}
+              {chatLoading
+                ? '답변 중'
+                : '전송'}
             </button>
           </div>
         </div>
@@ -779,7 +884,10 @@ export default function Home() {
 
   // ==================== 4페이지: 조건 검증 및 2차 설계서 작성 ====================
   if (step === 4) {
-    if (verificationResult && !verificationResult.passed) {
+    if (
+      verificationResult &&
+      !verificationResult.passed
+    ) {
       return (
         <div
           style={{
@@ -793,7 +901,9 @@ export default function Home() {
             color: '#f8fafc'
           }}
         >
-          <span style={{ fontSize: '56px' }}>⚠️</span>
+          <span style={{ fontSize: '56px' }}>
+            ⚠️
+          </span>
 
           <h2
             style={{
@@ -920,8 +1030,9 @@ export default function Home() {
           }}
           placeholder="최종 가설을 작성하세요."
           value={revisedHypothesis}
-          onChange={e => setRevisedHypothesis(e.target.value)}
-          disabled={isCompleted}
+          onChange={e =>
+            setRevisedHypothesis(e.target.value)
+          }
         />
 
         {/* 2차 절차 */}
@@ -950,8 +1061,9 @@ export default function Home() {
           }}
           placeholder="최종 실험 절차를 작성하세요."
           value={revisedProcedure}
-          onChange={e => setRevisedProcedure(e.target.value)}
-          disabled={isCompleted}
+          onChange={e =>
+            setRevisedProcedure(e.target.value)
+          }
         />
 
         <div
@@ -978,38 +1090,22 @@ export default function Home() {
             ◀ 대화 다시 보기
           </button>
 
-          {!isCompleted ? (
-            <button
-              style={{
-                flex: 2,
-                padding: '14px',
-                borderRadius: '12px',
-                border: 'none',
-                backgroundColor: '#10b981',
-                color: '#fff',
-                fontWeight: '700',
-                fontSize: '16px',
-                cursor: 'pointer'
-              }}
-              onClick={handleSaveFinal}
-            >
-              💾 2차 탐구 설계서 최종 저장하기
-            </button>
-          ) : (
-            <div
-              style={{
-                flex: 2,
-                padding: '14px',
-                borderRadius: '12px',
-                backgroundColor: '#065f46',
-                color: '#34d399',
-                textAlign: 'center',
-                fontWeight: '700'
-              }}
-            >
-              ✓ 최종 탐구 설계서 저장이 완료되었습니다.
-            </div>
-          )}
+          <button
+            style={{
+              flex: 2,
+              padding: '14px',
+              borderRadius: '12px',
+              border: 'none',
+              backgroundColor: '#10b981',
+              color: '#fff',
+              fontWeight: '700',
+              fontSize: '16px',
+              cursor: 'pointer'
+            }}
+            onClick={handleSaveFinal}
+          >
+            💾 2차 탐구 설계서 저장하기
+          </button>
         </div>
       </div>
     );
