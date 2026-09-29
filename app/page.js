@@ -23,6 +23,28 @@ export default function Home() {
   const [revisedProcedure, setRevisedProcedure] = useState('');
   const [isCompleted, setIsCompleted] = useState(false);
 
+  // 진행 상태 저장
+  const saveProgress = async (targetStep) => {
+    try {
+      await fetch('/api/inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_progress',
+          ...userInfo,
+          currentStep: targetStep,
+          initialHypothesis,
+          initialProcedure,
+          revisedHypothesis,
+          revisedProcedure,
+          messages
+        })
+      });
+    } catch (err) {
+      console.error('진행 상태 저장 오류:', err);
+    }
+  };
+
   // 1페이지: 로그인 및 세션 복원
   const handleLogin = async () => {
     if (!userInfo.number.trim() || !userInfo.name.trim() || !userInfo.code.trim()) {
@@ -43,7 +65,15 @@ export default function Home() {
         const s = data.session;
         setInitialHypothesis(s.initial_hypothesis || '');
         setInitialProcedure(s.initial_procedure || '');
-        setTotalScore(s.total_score);
+
+        const restoredTotalScore =
+          s.total_score !== null && s.total_score !== undefined
+            ? Number(s.total_score)
+            : (Array.isArray(s.evaluation_details?.checklist)
+                ? s.evaluation_details.checklist.reduce((sum, item) => sum + (Number(item.score) === 1 ? 1 : 0), 0)
+                : null);
+
+        setTotalScore(Number.isFinite(restoredTotalScore) ? restoredTotalScore : null);
         setMessages(s.chat_messages || []);
         setRevisedHypothesis(s.revised_hypothesis || '');
         setRevisedProcedure(s.revised_procedure || '');
@@ -57,7 +87,7 @@ export default function Home() {
         setStep(targetStep);
 
         if (targetStep === 3 && (!s.chat_messages || s.chat_messages.length === 0)) {
-          loadInitialChat();
+          await loadInitialChat();
         }
       } else {
         setStep(2);
@@ -90,7 +120,9 @@ export default function Home() {
         })
       });
       const data = await res.json();
-      setTotalScore(data.totalScore);
+
+      const numericTotalScore = Number(data.totalScore);
+      setTotalScore(Number.isFinite(numericTotalScore) ? numericTotalScore : null);
       setStep(3);
 
       // 3페이지 첫 안내 대화 로드
@@ -110,6 +142,12 @@ export default function Home() {
       body: JSON.stringify({ action: 'get_initial_chat', ...userInfo })
     });
     const data = await res.json();
+
+    if (data.totalScore !== undefined) {
+      const numericTotalScore = Number(data.totalScore);
+      setTotalScore(Number.isFinite(numericTotalScore) ? numericTotalScore : null);
+    }
+
     if (data.messages) setMessages(data.messages);
   };
 
@@ -204,7 +242,7 @@ export default function Home() {
     );
   }
 
-// ==================== 1페이지: 로그인 ====================
+  // ==================== 1페이지: 로그인 ====================
   if (step === 1) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -215,26 +253,26 @@ export default function Home() {
             <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>학번, 이름, 코드를 입력해 시작하거나 이어하세요.</p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <input 
+            <input
               style={{ padding: '14px', borderRadius: '12px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', fontSize: '15px' }}
-              placeholder="학번 (예: 10101)" 
-              value={userInfo.number} 
-              onChange={e => setUserInfo({ ...userInfo, number: e.target.value })} 
+              placeholder="학번 (예: 10101)"
+              value={userInfo.number}
+              onChange={e => setUserInfo({ ...userInfo, number: e.target.value })}
             />
-            <input 
+            <input
               style={{ padding: '14px', borderRadius: '12px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', fontSize: '15px' }}
-              placeholder="이름 (예: 홍길동)" 
-              value={userInfo.name} 
-              onChange={e => setUserInfo({ ...userInfo, name: e.target.value })} 
+              placeholder="이름 (예: 홍길동)"
+              value={userInfo.name}
+              onChange={e => setUserInfo({ ...userInfo, name: e.target.value })}
             />
-            <input 
+            <input
               style={{ padding: '14px', borderRadius: '12px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', fontSize: '15px' }}
-              placeholder="식별코드" 
+              placeholder="식별코드"
               title="타인의 학번과 이름으로 접속하는 것을 방지하기 위해 자신만 기억할 수 있는 코드를 입력하세요."
-              value={userInfo.code} 
-              onChange={e => setUserInfo({ ...userInfo, code: e.target.value })} 
+              value={userInfo.code}
+              onChange={e => setUserInfo({ ...userInfo, code: e.target.value })}
             />
-            <button 
+            <button
               style={{ marginTop: '10px', padding: '16px', borderRadius: '12px', border: 'none', backgroundColor: '#3b82f6', color: '#fff', fontWeight: '700', fontSize: '16px', cursor: 'pointer' }}
               onClick={handleLogin}
             >
@@ -256,20 +294,20 @@ export default function Home() {
         </p>
 
         <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px' }}>1. 실험 가설</label>
-        <textarea 
+        <textarea
           style={{ width: '100%', height: '100px', padding: '14px', borderRadius: '12px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', fontSize: '15px', boxSizing: 'border-box', marginBottom: '20px' }}
           value={initialHypothesis}
           onChange={e => setInitialHypothesis(e.target.value)}
         />
 
         <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px' }}>2. 실험 절차</label>
-        <textarea 
+        <textarea
           style={{ width: '100%', height: '220px', padding: '14px', borderRadius: '12px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', fontSize: '15px', boxSizing: 'border-box', marginBottom: '24px' }}
           value={initialProcedure}
           onChange={e => setInitialProcedure(e.target.value)}
         />
 
-        <button 
+        <button
           style={{ width: '100%', padding: '16px', borderRadius: '12px', border: 'none', backgroundColor: '#2563eb', color: '#fff', fontWeight: '700', fontSize: '16px', cursor: 'pointer' }}
           onClick={handleEvaluateStep2}
         >
@@ -281,14 +319,17 @@ export default function Home() {
 
   // ==================== 3페이지: 상호작용 대화 (라우터 적용) ====================
   if (step === 3) {
-    const isNovice = totalScore !== null && totalScore <= 10;
+    const numericTotalScore = Number(totalScore);
+    const hasTotalScore = Number.isFinite(numericTotalScore);
+    const isNovice = hasTotalScore && numericTotalScore <= 10;
+
     return (
       <div style={{ maxWidth: '900px', margin: '30px auto', padding: '24px', backgroundColor: '#1e293b', borderRadius: '24px', border: '1px solid #334155', color: '#f8fafc', display: 'flex', flexDirection: 'column', height: '88vh' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: '16px', marginBottom: '16px' }}>
           <div>
             <h2 style={{ fontSize: '20px', margin: 0, color: '#38bdf8' }}>💬 과학탐구 도우미와의 대화</h2>
             <span style={{ fontSize: '13px', color: '#94a3b8' }}>
-              유형: <b style={{ color: isNovice ? '#f87171' : '#4ade80' }}>{isNovice ? '지시적·초점화' : '정교화·확장'}</b> (총점: {totalScore}/15점)
+              유형: <b style={{ color: isNovice ? '#f87171' : '#4ade80' }}>{hasTotalScore ? (isNovice ? '지시적·초점화' : '정교화·확장') : '채점 확인 중'}</b> (총점: {hasTotalScore ? numericTotalScore : '-'}/15점)
             </span>
           </div>
           <span style={{ fontSize: '14px', color: '#cbd5e1' }}>👤 {userInfo.number} {userInfo.name}</span>
@@ -322,7 +363,7 @@ export default function Home() {
         {/* 퀵 액션 & 입력창 */}
         <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button 
+            <button
               style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #475569', backgroundColor: '#1e293b', color: '#cbd5e1', fontSize: '13px', cursor: 'pointer' }}
               onClick={() => setUserPrompt('궁금한 건 다 물어봤어')}
             >
@@ -330,7 +371,7 @@ export default function Home() {
             </button>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <textarea 
+            <textarea
               style={{ flex: 1, height: '70px', padding: '12px', borderRadius: '12px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', fontSize: '14px', resize: 'none' }}
               placeholder="질문이나 답변을 입력하세요..."
               value={userPrompt}
@@ -342,7 +383,7 @@ export default function Home() {
                 }
               }}
             />
-            <button 
+            <button
               style={{ width: '100px', borderRadius: '12px', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: '700', cursor: 'pointer' }}
               onClick={handleSendMessage}
             >
@@ -353,13 +394,16 @@ export default function Home() {
 
         {/* 하단 이동 버튼 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px' }}>
-          <button 
+          <button
             style={{ padding: '10px 18px', borderRadius: '8px', border: '1px solid #475569', backgroundColor: 'transparent', color: '#94a3b8', cursor: 'pointer' }}
-            onClick={() => setStep(2)}
+            onClick={async () => {
+              await saveProgress(2);
+              setStep(2);
+            }}
           >
             ◀ 1차 설계서 확인
           </button>
-          <button 
+          <button
             style={{ padding: '12px 24px', borderRadius: '10px', border: 'none', backgroundColor: '#8b5cf6', color: '#fff', fontWeight: '700', cursor: 'pointer' }}
             onClick={handleProceedToStep4}
           >
@@ -380,7 +424,7 @@ export default function Home() {
           <p style={{ color: '#cbd5e1', fontSize: '15px', lineHeight: '1.7', margin: '20px 0' }}>
             {verificationResult.reason || '[이전] 버튼을 눌러 과학탐구 도우미와 더 대화해야 합니다.'}
           </p>
-          <button 
+          <button
             style={{ padding: '14px 28px', borderRadius: '12px', border: 'none', backgroundColor: '#3b82f6', color: '#fff', fontWeight: '700', cursor: 'pointer' }}
             onClick={() => setStep(3)}
           >
@@ -405,7 +449,7 @@ export default function Home() {
 
         {/* 2차 가설 */}
         <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px' }}>수정된 2차 가설</label>
-        <textarea 
+        <textarea
           style={{ width: '100%', height: '90px', padding: '14px', borderRadius: '12px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', fontSize: '15px', boxSizing: 'border-box', marginBottom: '20px' }}
           placeholder="최종 가설을 작성하세요."
           value={revisedHypothesis}
@@ -415,7 +459,7 @@ export default function Home() {
 
         {/* 2차 절차 */}
         <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px' }}>수정된 2차 실험 절차</label>
-        <textarea 
+        <textarea
           style={{ width: '100%', height: '200px', padding: '14px', borderRadius: '12px', border: '1px solid #475569', backgroundColor: '#0f172a', color: '#fff', fontSize: '15px', boxSizing: 'border-box', marginBottom: '24px' }}
           placeholder="최종 실험 절차를 작성하세요."
           value={revisedProcedure}
@@ -424,14 +468,17 @@ export default function Home() {
         />
 
         <div style={{ display: 'flex', gap: '16px' }}>
-          <button 
+          <button
             style={{ flex: 1, padding: '14px', borderRadius: '12px', border: '1px solid #475569', backgroundColor: 'transparent', color: '#94a3b8', cursor: 'pointer' }}
-            onClick={() => setStep(3)}
+            onClick={async () => {
+              await saveProgress(3);
+              setStep(3);
+            }}
           >
             ◀ 대화 다시 보기
           </button>
           {!isCompleted ? (
-            <button 
+            <button
               style={{ flex: 2, padding: '14px', borderRadius: '12px', border: 'none', backgroundColor: '#10b981', color: '#fff', fontWeight: '700', fontSize: '16px', cursor: 'pointer' }}
               onClick={handleSaveFinal}
             >
