@@ -20,10 +20,15 @@ export default function Home() {
   const chatContainerRef = useRef(null);
 
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [messages]);
+    if (!chatContainerRef.current) return;
+
+    requestAnimationFrame(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop =
+          chatContainerRef.current.scrollHeight;
+      }
+    });
+  }, [messages, chatLoading]);
 
   // 4페이지 상태
   const [verificationResult, setVerificationResult] = useState(null);
