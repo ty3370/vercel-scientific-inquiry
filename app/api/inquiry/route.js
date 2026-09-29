@@ -1,5 +1,6 @@
 import { sql } from '@vercel/postgres';
 import OpenAI from 'openai';
+import { NOVICE_SCORE_THRESHOLD } from '../../config';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || '',
@@ -212,7 +213,7 @@ export async function POST(req) {
 
       let firstMessage = '';
 
-      if (totalScore <= 10) {
+      if (totalScore <= NOVICE_SCORE_THRESHOLD) {
         // 초보적 탐구 설계자: 평가 결과(점수 및 피드백) 공개
         const weakItems = evalDetails.checklist
           .filter(i => i.score === 0)
@@ -306,7 +307,7 @@ export async function POST(req) {
 
       const isNovice =
         Number.isFinite(chatTotalScore) &&
-        chatTotalScore <= 10;
+        chatTotalScore <= NOVICE_SCORE_THRESHOLD;
 
       // 시스템 프롬프트 라우팅 설정
       const systemInstruction = `
@@ -525,9 +526,9 @@ export async function POST(req) {
       { error: '알 수 없는 요청입니다.' },
       { status: 400 }
     );
-
   } catch (error) {
     console.error('[API Error]:', error);
+
     return Response.json(
       { error: error.message },
       { status: 500 }
