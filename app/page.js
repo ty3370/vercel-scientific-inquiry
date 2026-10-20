@@ -59,6 +59,83 @@ export default function Home() {
     }
   };
 
+  // 학생 데이터 텍스트 생성 함수 (다운로드 및 복사용)
+  const buildReportText = () => {
+    const now = new Date().toLocaleString('ko-KR');
+    const chatLog = messages
+      .map(
+        (m) =>
+          `[${m.role === 'user' ? '나(학생)' : '과학탐구 도우미(AI)'}]\n${m.content}`
+      )
+      .join('\n\n');
+
+    return [
+      `==================================================`,
+      `           과학 자유탐구 설계 결과 보고서`,
+      `==================================================`,
+      `• 학번: ${userInfo.number}`,
+      `• 이름: ${userInfo.name}`,
+      `• 저장 일시: ${now}`,
+      ``,
+      `--------------------------------------------------`,
+      `1. 1차 탐구 설계`,
+      `--------------------------------------------------`,
+      `[1차 실험 가설]`,
+      `${initialHypothesis || '(작성 내용 없음)'}`,
+      ``,
+      `[1차 실험 절차]`,
+      `${initialProcedure || '(작성 내용 없음)'}`,
+      ``,
+      `--------------------------------------------------`,
+      `2. AI 대화 요약`,
+      `--------------------------------------------------`,
+      `${verificationResult?.summary || '(요약 내용 없음)'}`,
+      ``,
+      `--------------------------------------------------`,
+      `3. 수정된 2차 탐구 설계 (최종)`,
+      `--------------------------------------------------`,
+      `[수정된 2차 가설]`,
+      `${revisedHypothesis || '(작성 내용 없음)'}`,
+      ``,
+      `[수정된 2차 실험 절차]`,
+      `${revisedProcedure || '(작성 내용 없음)'}`,
+      ``,
+      `--------------------------------------------------`,
+      `4. 과학탐구 도우미와의 전체 대화 기록`,
+      `--------------------------------------------------`,
+      `${chatLog || '(대화 기록 없음)'}`,
+      `==================================================`
+    ].join('\n');
+  };
+
+  // 로컬(스마트폰/PC)에 .txt 파일로 다운로드
+  const handleDownloadFile = () => {
+    const content = buildReportText();
+    // '\uFEFF' (UTF-8 BOM) 추가로 모바일 및 윈도우 메모장 한글 깨짐 방지
+    const blob = new Blob(['\uFEFF' + content], {
+      type: 'text/plain;charset=utf-8;'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `탐구설계서_${userInfo.number}_${userInfo.name}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  // 클립보드에 전체 내용 복사 (스마트폰 메모장/카톡 붙여넣기용)
+  const handleCopyText = async () => {
+    try {
+      const content = buildReportText();
+      await navigator.clipboard.writeText(content);
+      alert('📋 전체 탐구 내용이 복사되었습니다! 메모장이나 카카오톡에 붙여넣어 보관할 수 있습니다.');
+    } catch (err) {
+      alert('복사에 실패했습니다. 파일 다운로드 버튼을 이용해 주세요.');
+    }
+  };
+
   // 1페이지: 로그인 및 세션 복원
   const handleLogin = async () => {
     if (!userInfo.number.trim() || !userInfo.name.trim() || !userInfo.code.trim()) {
@@ -102,6 +179,13 @@ export default function Home() {
         setMessages(s.chat_messages || []);
         setRevisedHypothesis(s.revised_hypothesis || '');
         setRevisedProcedure(s.revised_procedure || '');
+
+        if (s.ai_summary) {
+          setVerificationResult({
+            passed: true,
+            summary: s.ai_summary
+          });
+        }
 
         if (s.revised_hypothesis && s.revised_procedure) {
           setIsCompleted(true);
@@ -290,7 +374,7 @@ export default function Home() {
         setIsCompleted(true);
 
         alert(
-          '🎉 최종 2차 탐구 설계서가 성공적으로 저장되었습니다!'
+          '🎉 최종 2차 탐구 설계서가 성공적으로 저장되었습니다!\n하단의 [내 탐구 결과 다운로드] 버튼을 눌러 스마트폰이나 PC에 보관하세요.'
         );
       }
     } catch (err) {
@@ -1106,6 +1190,54 @@ export default function Home() {
             onClick={handleSaveFinal}
           >
             💾 2차 탐구 설계서 저장하기
+          </button>
+        </div>
+
+        {/* 학생 개인 소장용 다운로드 및 복사 영역 */}
+        <div
+          style={{
+            marginTop: '16px',
+            paddingTop: '16px',
+            borderTop: '1px solid #334155',
+            display: 'flex',
+            gap: '12px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <button
+            style={{
+              flex: 2,
+              minWidth: '220px',
+              padding: '14px',
+              borderRadius: '12px',
+              border: 'none',
+              backgroundColor: '#3b82f6',
+              color: '#fff',
+              fontWeight: '700',
+              fontSize: '15px',
+              cursor: 'pointer'
+            }}
+            onClick={handleDownloadFile}
+          >
+            📥 내 탐구 결과 파일로 다운로드 (.txt)
+          </button>
+
+          <button
+            style={{
+              flex: 1,
+              minWidth: '160px',
+              padding: '14px',
+              borderRadius: '12px',
+              border: '1px solid #475569',
+              backgroundColor: '#0f172a',
+              color: '#e2e8f0',
+              fontWeight: '600',
+              fontSize: '14px',
+              cursor: 'pointer'
+            }}
+            onClick={handleCopyText}
+          >
+            📋 전체 내용 복사하기
           </button>
         </div>
       </div>
