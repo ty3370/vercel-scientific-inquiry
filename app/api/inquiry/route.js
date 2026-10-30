@@ -45,6 +45,28 @@ const EVALUATION_SYSTEM_PROMPT = `
 }
 `;
 
+// 주제 선정 단계: 학생이 주제를 직접 발견하도록 질문만 제공
+const TOPIC_FIRST_MESSAGE =
+  '안녕! 생각하고 있는 탐구 주제가 있니?';
+
+const TOPIC_SYSTEM_PROMPT = `
+당신은 고등학생의 과학 자유탐구 주제 선정을 돕는 대화 상대입니다.
+목표는 학생이 자신의 관심과 의문을 바탕으로 탐구 주제를 스스로 결정하게 하는 것입니다.
+
+[가장 중요한 규칙]
+- 학생에게 탐구 주제를 직접 추천하거나 대신 결정하지 마세요.
+- 구체적인 탐구 주제, 주제 목록, 예시 주제, 가설, 실험 절차를 절대로 제시하지 마세요.
+- 학생이 주제를 추천해 달라고 하거나 예시를 요청하더라도 주제나 예시를 제시하지 말고 질문으로 사고를 도우세요.
+- 학생의 관심사나 말을 토대로 새로운 주제 문장을 AI가 완성하거나 만들어 주지 마세요.
+- 학생이 직접 표현한 관심과 질문을 확인해 주고, 한 번에 하나의 짧은 열린 질문을 하세요.
+- 주제가 없다면 학생이 평소 궁금해한 현상, 좋아하는 활동, 의문이 생긴 경험을 스스로 떠올리도록 질문하세요. 특정 현상이나 사물을 AI가 먼저 제시하지 마세요.
+- 학생이 관심을 표현하면 '무엇이 궁금한가?', '무엇을 직접 확인하고 싶은가?', '학교에서 스스로 관찰하거나 비교할 수 있겠는가?'처럼 탐구 가능성을 스스로 점검하도록 도우세요.
+- 학생이 스스로 주제를 정했다고 말하면 그 주제를 자신의 말로 화면의 '내가 결정한 탐구 주제' 칸에 쓰고 [다음] 버튼을 누르라고 안내하세요.
+- 주제 결정 전에는 [다음] 버튼을 누르라고 하지 마세요.
+- 모든 응답은 한국어 일반 텍스트로 간결하게 작성하세요. 마크다운 문법은 사용하지 마세요.
+- 첫 질문은 이미 '지금 생각하고 있는 탐구 주제가 있니?'라고 제시되었습니다. 이후에는 학생의 답을 바탕으로 대화하세요.
+`;
+
 export async function POST(req) {
   try {
     const body = await req.json();
@@ -77,7 +99,113 @@ export async function POST(req) {
       });
     }
 
-    // 2. 2페이지: 1차 탐구 설계 15개 항목 채점
+    // 2. 새 2페이지: 주제 선정 대화 시작 (기존 설계·피드백 대화와 별도 저장)
+    if (action === 'get_initial_topic_chat') {
+      const { rows } = await sql`
+        SELECT topic_messages
+        FROM inquiry_sessions
+        WHERE number = ${number} AND name = ${name} AND code = ${code};
+      `;
+
+      if (!rows.length) {
+        return Response.json({ error: '세션을 찾을 수 없습니다.' }, { status: 404 });
+      }
+
+      const savedMessages = rows[0].topic_messages;
+      if (Array.isArray(savedMessages) && savedMessages.length > 0) {
+        return Response.json({ messages: savedMessages });
+      }
+
+      const initialMessages = [{ role: 'assistant', content: TOPIC_FIRST_MESSAGE }];
+      await sql`
+        UPDATE inquiry_sessions
+        SET topic_messages = ${JSON.stringify(initialMessages)}::jsonb,
+            updated_at = NOW()
+        WHERE number = ${number} AND name = ${name} AND code = ${code};
+      `;
+      return Response.json({ messages: initialMessages });
+    }
+
+    // 3. 주제 선정 대화: 추천이 아닌 질문을 통한 사고 유도
+    if (action === 'send_topic_chat') {
+      const { userPrompt } = body;
+      if (typeof userPrompt !== 'string' || !userPrompt.trim()) {
+        return Response.json({ error: '메시지를 입력해 주세요.' }, { status: 400 });
+      }
+
+      const { rows } = await sql`
+        SELECT topic_messages
+        FROM inquiry_sessions
+        WHERE number = ${number} AND name = ${name} AND code = ${code};
+      `;
+
+      if (!rows.length) {
+        return Response.json({ error: '세션을 찾을 수 없습니다.' }, { status: 404 });
+      }
+
+      const topicMessages = Array.isArray(rows[0].topic_messages) && rows[0].topic_messages.length > 0
+        ? rows[0].topic_messages
+        : [{ role: 'assistant', content: TOPIC_FIRST_MESSAGE }];
+
+      const response = await openai.chat.completions.create({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: TOPIC_SYSTEM_PROMPT },
+          ...topicMessages.map(m => ({ role: m.role, content: m.content })),
+          { role: 'user', content: userPrompt.trim() }
+        ]
+      });
+
+      const updatedMessages = [
+        ...topicMessages,
+        { role: 'user', content: userPrompt.trim() },
+        { role: 'assistant', content: response.choices[0].message.content }
+      ];
+
+      await sql`
+        UPDATE inquiry_sessions
+        SET topic_messages = ${JSON.stringify(updatedMessages)}::jsonb,
+            updated_at = NOW()
+        WHERE number = ${number} AND name = ${name} AND code = ${code};
+      `;
+      return Response.json({ updatedMessages });
+    }
+
+    // 4. 학생이 확정한 주제 저장 후 기존 1차 탐구 설계 화면으로 이동
+    if (action === 'save_topic') {
+      const inquiryTopic = typeof body.inquiryTopic === 'string'
+        ? body.inquiryTopic.trim()
+        : '';
+
+      if (!inquiryTopic) {
+        return Response.json({ error: '스스로 결정한 탐구 주제를 입력해 주세요.' }, { status: 400 });
+      }
+
+      const { rows } = await sql`
+        SELECT topic_messages
+        FROM inquiry_sessions
+        WHERE number = ${number} AND name = ${name} AND code = ${code};
+      `;
+
+      if (!rows.length) {
+        return Response.json({ error: '세션을 찾을 수 없습니다.' }, { status: 404 });
+      }
+      if (!Array.isArray(rows[0].topic_messages) ||
+          !rows[0].topic_messages.some(m => m.role === 'user')) {
+        return Response.json({ error: '먼저 주제 선정 대화를 진행해 주세요.' }, { status: 400 });
+      }
+
+      await sql`
+        UPDATE inquiry_sessions
+        SET inquiry_topic = ${inquiryTopic},
+            current_step = 5,
+            updated_at = NOW()
+        WHERE number = ${number} AND name = ${name} AND code = ${code};
+      `;
+      return Response.json({ success: true });
+    }
+
+    // 5. 기존 1차 탐구 설계 15개 항목 채점
     if (action === 'evaluate_step2') {
       const { hypothesis, procedure } = body;
 
