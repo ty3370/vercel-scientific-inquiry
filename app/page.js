@@ -9,7 +9,14 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState('');
 
-  // 2페이지 상태
+  // 2페이지: 탐구 주제 선정 대화
+  const [inquiryTopic, setInquiryTopic] = useState('');
+  const [topicMessages, setTopicMessages] = useState([]);
+  const [topicPrompt, setTopicPrompt] = useState('');
+  const [topicChatLoading, setTopicChatLoading] = useState(false);
+  const topicChatContainerRef = useRef(null);
+
+  // 1차 탐구 설계 상태
   const [initialHypothesis, setInitialHypothesis] = useState('');
   const [initialProcedure, setInitialProcedure] = useState('');
   const [totalScore, setTotalScore] = useState(null);
@@ -30,6 +37,17 @@ export default function Home() {
       }
     });
   }, [messages, chatLoading]);
+
+  useEffect(() => {
+    if (!topicChatContainerRef.current) return;
+
+    requestAnimationFrame(() => {
+      if (topicChatContainerRef.current) {
+        topicChatContainerRef.current.scrollTop =
+          topicChatContainerRef.current.scrollHeight;
+      }
+    });
+  }, [topicMessages, topicChatLoading]);
 
   // 4페이지 상태
   const [verificationResult, setVerificationResult] = useState(null);
@@ -62,6 +80,12 @@ export default function Home() {
   // 학생 데이터 텍스트 생성 함수 (다운로드 및 복사용)
   const buildReportText = () => {
     const now = new Date().toLocaleString('ko-KR');
+    const topicChatLog = topicMessages
+      .map(
+        (m) =>
+          `[${m.role === 'user' ? '나(학생)' : '과학탐구 도우미(AI)'}]\n${m.content}`
+      )
+      .join('\n\n');
     const chatLog = messages
       .map(
         (m) =>
@@ -76,6 +100,12 @@ export default function Home() {
       `• 학번: ${userInfo.number}`,
       `• 이름: ${userInfo.name}`,
       `• 저장 일시: ${now}`,
+      `• 탐구 주제: ${inquiryTopic || '(작성 내용 없음)'}`,
+      ``,
+      `--------------------------------------------------`,
+      `탐구 주제 선정 대화`,
+      `--------------------------------------------------`,
+      `${topicChatLog || '(대화 기록 없음)'}`,
       ``,
       `--------------------------------------------------`,
       `1. 1차 탐구 설계`,
@@ -157,6 +187,8 @@ export default function Home() {
       if (data.exists && data.session) {
         const s = data.session;
 
+        setInquiryTopic(s.inquiry_topic || '');
+        setTopicMessages(s.topic_messages || []);
         setInitialHypothesis(s.initial_hypothesis || '');
         setInitialProcedure(s.initial_procedure || '');
 
@@ -196,6 +228,13 @@ export default function Home() {
         setStep(targetStep);
 
         if (
+          targetStep === 2 &&
+          (!s.topic_messages || s.topic_messages.length === 0)
+        ) {
+          await loadInitialTopicChat();
+        }
+
+        if (
           targetStep === 3 &&
           (!s.chat_messages || s.chat_messages.length === 0)
         ) {
@@ -203,6 +242,7 @@ export default function Home() {
         }
       } else {
         setStep(2);
+        await loadInitialTopicChat();
       }
     } catch (err) {
       alert('오류가 발생했습니다: ' + err.message);
@@ -211,7 +251,81 @@ export default function Home() {
     }
   };
 
-  // 2페이지 -> 3페이지 (15개 항목 채점)
+  // 주제 선정 첫 AI 메시지 로드 (학생의 관심 주제부터 질문)
+  const loadInitialTopicChat = async () => {
+    const res = await fetch('/api/inquiry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get_initial_topic_chat', ...userInfo })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '주제 선정 대화를 불러오지 못했습니다.');
+    setTopicMessages(data.messages || []);
+  };
+
+  // 주제 선정 단계: 학생의 생각을 AI와 대화로 구체화
+  const handleSendTopicMessage = async () => {
+    if (!topicPrompt.trim() || loading || topicChatLoading) return;
+
+    const currentInput = topicPrompt.trim();
+    setTopicPrompt('');
+    setTopicChatLoading(true);
+
+    try {
+      const res = await fetch('/api/inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_topic_chat',
+          ...userInfo,
+          userPrompt: currentInput
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '대화 중 오류가 발생했습니다.');
+      setTopicMessages(data.updatedMessages || []);
+    } catch (err) {
+      setTopicPrompt(currentInput);
+      alert('주제 선정 대화 중 오류가 발생했습니다: ' + err.message);
+    } finally {
+      setTopicChatLoading(false);
+    }
+  };
+
+  // 주제를 학생이 직접 확정한 뒤 기존 1차 탐구 설계 화면으로 이동
+  const handleSaveTopic = async () => {
+    if (!topicMessages.some(m => m.role === 'user')) {
+      return alert('먼저 AI의 질문에 답하면서 탐구 주제를 생각해 주세요.');
+    }
+    if (!inquiryTopic.trim()) {
+      return alert('스스로 결정한 탐구 주제를 입력해 주세요.');
+    }
+
+    setLoading(true);
+    setLoadingText('결정한 탐구 주제를 저장하고 있습니다...');
+
+    try {
+      const res = await fetch('/api/inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_topic',
+          ...userInfo,
+          inquiryTopic: inquiryTopic.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '탐구 주제를 저장하지 못했습니다.');
+      setInquiryTopic(inquiryTopic.trim());
+      setStep(5);
+    } catch (err) {
+      alert('주제 저장 중 오류가 발생했습니다: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 1차 탐구 설계 -> 3페이지 (15개 항목 채점)
   const handleEvaluateStep2 = async () => {
     if (!initialHypothesis.trim() || !initialProcedure.trim()) {
       return alert('가설과 실험 절차를 모두 입력해 주세요.');
@@ -556,8 +670,169 @@ export default function Home() {
     );
   }
 
-  // ==================== 2페이지: 1차 탐구 설계 ====================
+  // ==================== 2페이지: 탐구 주제 정하기 ====================
   if (step === 2) {
+    const hasStudentReply = topicMessages.some(m => m.role === 'user');
+
+    return (
+      <div
+        style={{
+          maxWidth: '900px',
+          margin: '30px auto',
+          padding: '24px',
+          backgroundColor: '#1e293b',
+          borderRadius: '24px',
+          border: '1px solid #334155',
+          color: '#f8fafc',
+          display: 'flex',
+          flexDirection: 'column',
+          height: '88vh',
+          boxSizing: 'border-box'
+        }}
+      >
+        <h2 style={{ fontSize: '20px', margin: '0 0 8px', color: '#38bdf8' }}>
+          💬 탐구 주제 정하기
+        </h2>
+        <p style={{ color: '#94a3b8', fontSize: '14px', margin: '0 0 16px' }}>
+          AI가 주제를 대신 정해 주지 않아요. 질문에 답하면서 스스로 탐구 주제를 생각해 보세요.
+        </p>
+
+        <div
+          ref={topicChatContainerRef}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            backgroundColor: '#0f172a',
+            borderRadius: '16px',
+            padding: '20px',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            border: '1px solid #334155'
+          }}
+        >
+          {topicMessages.map((m, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start'
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: '80%',
+                  padding: '14px 18px',
+                  borderRadius: '16px',
+                  borderBottomRightRadius: m.role === 'user' ? '4px' : '16px',
+                  borderBottomLeftRadius: m.role === 'assistant' ? '4px' : '16px',
+                  fontSize: '15px',
+                  lineHeight: '1.6',
+                  whiteSpace: 'pre-wrap',
+                  backgroundColor: m.role === 'user' ? '#2563eb' : '#334155',
+                  color: '#fff'
+                }}
+              >
+                <div style={{ fontSize: '12px', fontWeight: '700', marginBottom: '4px', opacity: 0.8 }}>
+                  {m.role === 'user' ? '나' : '🤖 과학탐구 도우미'}
+                </div>
+                {m.content}
+              </div>
+            </div>
+          ))}
+          {topicChatLoading && (
+            <div style={{ color: '#cbd5e1', fontSize: '14px' }}>
+              🤖 과학탐구 도우미가 답변을 작성하고 있어요...
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+          <textarea
+            style={{
+              flex: 1,
+              height: '70px',
+              padding: '12px',
+              borderRadius: '12px',
+              border: '1px solid #475569',
+              backgroundColor: '#0f172a',
+              color: '#fff',
+              fontSize: '14px',
+              resize: 'none'
+            }}
+            placeholder="AI의 질문에 내 생각을 적어 보세요..."
+            value={topicPrompt}
+            disabled={topicChatLoading}
+            onChange={e => setTopicPrompt(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendTopicMessage();
+              }
+            }}
+          />
+          <button
+            style={{
+              width: '100px',
+              borderRadius: '12px',
+              border: 'none',
+              backgroundColor: '#10b981',
+              color: '#fff',
+              fontWeight: '700',
+              cursor: topicChatLoading ? 'not-allowed' : 'pointer'
+            }}
+            onClick={handleSendTopicMessage}
+            disabled={topicChatLoading}
+          >
+            {topicChatLoading ? '답변 중' : '전송'}
+          </button>
+        </div>
+
+        <div style={{ marginTop: '18px', borderTop: '1px solid #334155', paddingTop: '16px' }}>
+          <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px' }}>
+            내가 결정한 탐구 주제
+          </label>
+          <input
+            style={{
+              width: '100%',
+              padding: '14px',
+              borderRadius: '12px',
+              border: '1px solid #475569',
+              backgroundColor: '#0f172a',
+              color: '#fff',
+              fontSize: '15px',
+              boxSizing: 'border-box'
+            }}
+            placeholder="대화 후 스스로 정한 주제를 적어 주세요."
+            value={inquiryTopic}
+            onChange={e => setInquiryTopic(e.target.value)}
+          />
+          <button
+            style={{
+              width: '100%',
+              marginTop: '12px',
+              padding: '16px',
+              borderRadius: '12px',
+              border: 'none',
+              backgroundColor: hasStudentReply && inquiryTopic.trim() && !topicChatLoading ? '#2563eb' : '#475569',
+              color: '#fff',
+              fontWeight: '700',
+              fontSize: '16px',
+              cursor: hasStudentReply && inquiryTopic.trim() && !topicChatLoading ? 'pointer' : 'not-allowed'
+            }}
+            onClick={handleSaveTopic}
+            disabled={!hasStudentReply || !inquiryTopic.trim() || topicChatLoading}
+          >
+            다음 단계로 ➔
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== 1차 탐구 설계 (기존 2페이지) ====================
+  if (step === 5) {
     return (
       <div
         style={{
